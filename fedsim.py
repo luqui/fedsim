@@ -24,9 +24,9 @@ class Market:
             return
         i = 0
         while i < len(self.asks):
-            if not self.asks[i].asker.alive:
-                self.asks.pop(i)
-            elif price == self.asks[i].price and asker == self.asks[i].asker:
+            #if not self.asks[i].asker.alive:
+            #    self.asks.pop(i)
+            if price == self.asks[i].price and asker == self.asks[i].asker:
                 self.asks[i].qty += qty
                 break
             elif price < self.asks[i].price:
@@ -43,9 +43,9 @@ class Market:
             return
         i = 0
         while i < len(self.bids):
-            #if not self.bids[i].bidder.alive:
-            #    self.bids.pop(i)
-            if price == self.bids[i].price and bidder == self.bids[i].bidder:
+            if not self.bids[i].bidder.alive:
+                self.bids.pop(i)  
+            elif price == self.bids[i].price and bidder == self.bids[i].bidder:
                 self.bids[i].qty += qty
                 break
             elif price > self.bids[i].price:
@@ -116,6 +116,7 @@ class Market:
 class Logger:
     def __init__(self, name):
         self.name = name
+        self.alive = True
 
     def bought(self, good, qty, price):
         print(f'{self.name} bought {qty} of {good} at ${price:.2f}')
@@ -124,46 +125,37 @@ class Logger:
         print(f'{self.name} sold {qty} of {good} at ${price:.2f}')
 
 class Producer:
-    def __init__(self, good, askPrice, goodsRequired, capital, maxProduction):
+    def __init__(self, good, multiplier, askPrice, goodsRequired, capital):
         self.good = good
+        self.multiplier = multiplier
         self.askPrice = askPrice
         self.goodsRequired = goodsRequired
         self.capital = capital
         self.inventory = { req.good: 0 for req in goodsRequired }
-        self.maxProduction = maxProduction
         self.idleSteps = 0
         self.alive = True
 
     def operate(self, markets):
-        # use capital to buy goods
-        total = 0
-        for req in self.goodsRequired:
-            total += req.price * req.qty
-
-        pcapital = self.capital
-        for req in self.goodsRequired:
-            if req.price == 0:
-                qty = math.floor(self.maxProduction * req.qty)
-            else:
-                qty = math.floor(pcapital * req.qty / total)
-            markets.setdefault(req.good, Market(req.good)).bid(req.price, qty, self)
-            self.capital -= qty * req.price
-
-        canProduce = self.maxProduction
-        for req in self.goodsRequired:
-            qty = math.floor(self.inventory[req.good] / req.qty)
-            assert qty >= 0
-            canProduce = min(canProduce, qty)
-
-        for req in self.goodsRequired:
-            dqty = math.floor(canProduce * req.qty)
-            assert dqty <= self.inventory[req.good]
-            self.inventory[req.good] -= dqty
-        
-        markets.setdefault(self.good, Market(self.good)).ask(self.askPrice, canProduce, self)
         self.idleSteps += 1
         if self.idleSteps > 200:
             self.alive = False
+            return
+
+        canProduce = True
+        for req in self.goodsRequired:
+            dq = req.qty - self.inventory[req.good]
+            if dq > 0:
+                markets.setdefault(req.good, Market(req.good)).bid(req.price, dq, self)
+                self.capital -= dq * req.price
+                canProduce = False
+
+        if not canProduce:
+            return
+
+        for req in self.goodsRequired:
+            self.inventory[req.good] -= req.qty
+        
+        markets.setdefault(self.good, Market(self.good)).ask(self.askPrice, self.multiplier, self)
 
     def bought(self, good, qty, price):
         assert qty > 0
@@ -175,32 +167,43 @@ class Producer:
         self.idleSteps = 0
 
     def report(self):
-        reportLine = f'{self.good} @{self.askPrice} <- '
+        reportLine = f'{self.good} for ${self.askPrice:.2f} <- '
         for req in self.goodsRequired:
-            reportLine += f'{req.qty} {req.good} @{req.price:.2f}'
+            reportLine += f'{req.qty} {req.good} @{req.price:.2f}, '
+        if self.multiplier != 1:
+            reportLine += f'(makes {self.multiplier})'
         print(reportLine)
         #print(f'    ${self.capital:0.2f} | {self.inventory}')
 
-MARKETS = { Good(g): Market(Good(g)) for g in range(10) }
+
+MARKETS = {}
 PRODUCERS = [
-    Producer(Good(i), 0, [], 0, 1) for i in range(10)
+    Producer(Good('water'), 1, 0.00, [], 0),
+    Producer(Good('labor'), 1, 1.00, [ Input(Good('corn'), 2.32, 1), Input(Good('water'), 2.22, 1) ], 0),
+    Producer(Good('corn'), 10, 0.00, [ Input(Good('labor'), 1, 1), Input(Good('water'), 2.22, 1) ], 1000),
 ]
+
+MARKETS[Good('labor')] = Market(Good('labor'))
+MARKETS[Good('labor')].ask(0, 100, Logger('seed labor'))
+
+GOODS = [ Good(s) for s in [ 'labor', 'water', 'corn', 'wheat', 'apples', 'wood', 'ore', 'house', 'meat', 'spear' ] ]
 
 def make_producer():
     inputGoods = []
     cost = 0
-    for i in range(random.randrange(1,5)):
-        good = Good(random.randrange(10))
+    for i in range(random.randrange(1,4)):
+        good = random.choice(GOODS)
         if any(g.good == good for g in inputGoods):
             continue
-        price = MARKETS[good].marketPrice()
+        price = MARKETS.setdefault(good, Market(good)).marketPrice()
         if price is None:
             price = random.uniform(0,10)
         inputGood = Input(good, round(max(0,price * random.uniform(0.5, 1.5) + random.uniform(-1, 1)), 2), random.randrange(1,4))
         cost += inputGood.price * inputGood.qty
         inputGoods.append(inputGood)
 
-    return Producer(Good(random.randrange(10)), max(0, cost + random.uniform(-1,1), 2), inputGoods, round(random.uniform(0, 100000), 2), random.randrange(1,1000))
+    multiplier = random.randrange(1,10)
+    return Producer(random.choice(GOODS), multiplier, max(0, cost/multiplier + random.uniform(-1,1), 2), inputGoods, round(random.uniform(0, 100000), 2))
 
 STEP = 0
 while True:
@@ -211,10 +214,12 @@ while True:
         m.balance()
 
     if STEP % 10 == 0:
-        print()
-        print(f'------ STEP {STEP} ------')
         PRODUCERS.append(make_producer())
         PRODUCERS = list(filter(lambda p: p.alive, PRODUCERS))
+
+    if STEP % 1 == 0:
+        print()
+        print(f'------ STEP {STEP} ------')
         for p in PRODUCERS:
             p.report()
         for g in sorted(MARKETS.keys()):
