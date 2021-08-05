@@ -198,12 +198,12 @@ def make_producer():
         price = MARKETS.setdefault(good, Market(good)).marketPrice()
         if price is None:
             price = random.uniform(0,10)
-        inputGood = Input(good, round(max(0,price * random.uniform(0.5, 1.5) + random.uniform(-1, 1)), 2), random.randrange(1,4))
+        inputGood = Input(good, round(max(0, price * random.uniform(0.5, 1.5) + random.uniform(-1, 1)), 2), random.randrange(1,4))
         cost += inputGood.price * inputGood.qty
         inputGoods.append(inputGood)
 
     multiplier = random.randrange(1,10)
-    return Producer(random.choice(GOODS), multiplier, max(0, cost/multiplier + random.uniform(-1,1), 2), inputGoods, round(random.uniform(0, 100000), 2))
+    return Producer(random.choice(GOODS), multiplier, max(0, cost/multiplier + random.uniform(-1,1)), inputGoods, round(random.uniform(0, 100000), 2))
 
 STEP = 0
 while True:
@@ -224,6 +224,6 @@ while True:
             p.report()
         for g in sorted(MARKETS.keys()):
             MARKETS[g].report()
-        time.sleep(0.4)
+        time.sleep(0.1)
 
     STEP += 1
