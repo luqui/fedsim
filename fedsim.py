@@ -67,9 +67,9 @@ class Market:
         return volume
 
 class Producer:
-    def __init__(self, good, multiplier, goodsRequired, scale):
-        self.good = good
-        self.multiplier = multiplier
+    def __init__(self, output, goodsRequired, scale):
+        self.good = output.good
+        self.quantityProduced = output.qty
         self.goodsRequired = goodsRequired
         self.scale = scale
         self.inventory = { req.good: 0 for req in goodsRequired }
@@ -81,7 +81,7 @@ class Producer:
         self.idleSteps += 1
 
         self.inventory.setdefault(self.good, 0)
-        if self.inventory[self.good] < self.scale * self.multiplier:
+        if self.inventory[self.good] < self.scale * self.quantityProduced:
             scale = self.scale
             while scale > 0:
                 scale -= 1
@@ -98,7 +98,7 @@ class Producer:
                 else:
                     for req in self.goodsRequired:
                         self.inventory[req.good] -= req.qty
-                    self.inventory[self.good] += self.multiplier
+                    self.inventory[self.good] += self.quantityProduced
 
         market = getMarket(self.good)
         while self.inventory[self.good] * market.price() > max(0, -self.capital) and self.inventory[self.good] > 0:
@@ -107,7 +107,7 @@ class Producer:
             self.idleSteps = 0
 
     def report(self):
-        reportLine = f'{self.multiplier} {self.good} <- '
+        reportLine = f'{self.quantityProduced} {self.good} <- '
         for req in self.goodsRequired:
             reportLine += f'{req.qty} {req.good}, '
         print(reportLine)
@@ -123,9 +123,9 @@ def getMarket(good):
     return m
 
 PRODUCERS = [
-    Producer(Good('water'), 10, [ QGood(Good('labor'), 1) ], 1),
-    Producer(Good('labor'), 1, [ QGood(Good('corn'), 1), QGood(Good('water'), 1) ], 1),
-    Producer(Good('corn'), 10, [ QGood(Good('labor'), 1), QGood(Good('water'), 1) ], 1),
+    Producer(QGood(Good('water'), 10), [ QGood(Good('labor'), 1) ], 1),
+    Producer(QGood(Good('labor'), 1), [ QGood(Good('corn'), 1), QGood(Good('water'), 1) ], 1),
+    Producer(QGood(Good('corn'), 10), [ QGood(Good('labor'), 1), QGood(Good('water'), 1) ], 1),
 ]
 
 getMarket(Good('labor')).ask(100)
@@ -146,7 +146,7 @@ def make_producer():
         inputGoods.append(QGood(good, random.randrange(1,4)))
 
     multiplier = random.randrange(1,10)
-    return Producer(random.choice(GOODS), multiplier, inputGoods, random.randrange(1,100))
+    return Producer(QGood(random.choice(GOODS), multiplier), inputGoods, random.randrange(1,100))
 
 ADD_PRODUCER = False
 
