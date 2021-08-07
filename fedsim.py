@@ -146,7 +146,7 @@ def make_producer():
         inputGoods.append(QGood(good, random.randrange(1,4)))
 
     multiplier = random.randrange(1,10)
-    return Producer(QGood(random.choice(GOODS), multiplier), inputGoods, random.randrange(1,100))
+    return Producer(QGood(random.choice(GOODS), multiplier), inputGoods, 1)
 
 ADD_PRODUCER = False
 
