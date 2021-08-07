@@ -13,6 +13,10 @@ QGood = namedtuple('QGood', ['good', 'qty'])
 TRADE = 0
 TRADEQTY = 0
 
+PRICE_INERTIA = 0.9
+SCALE_INERTIA = 0.5
+PRICE_INVENTORY_BASE = 2
+
 def seqClosure(a, b):
     def r():
         a()
@@ -63,19 +67,23 @@ def marketBuyMany(markets, inputs):
     return (totalPrice, buyClosure)
 
 class Producer:
-    def __init__(self, output, inputs, capital, initialPrice = float('inf'), initialInventory = 0):
+    def __init__(self, output, inputs, capital, initialPrice = 1, initialInventory = 0):
         self._output = output
         self._inputs = inputs
         self._price = initialPrice
         self._inventory = initialInventory
-        self._maxInventory = 10 * self._output.qty
+        self._maxInventory = 30 * self._output.qty
         self._capital = capital
+        self._scale = 1
 
     def goodsProduced(self):
         if self._inventory > 0:
             return set([self._output.good])
         else:
             return set()
+
+    def _priceScale(self):
+        return math.pow(PRICE_INVENTORY_BASE, 1 - 2 * self._inventory / self._maxInventory)
 
     def askPrice(self, good, qty):
         def buyClosure(qty):
@@ -91,31 +99,32 @@ class Producer:
 
         if good != self._output.good:
             return (float('inf'), 0, cantBuyNothing)
-        if self._inventory >= qty:
-            return (qty * self._price, qty, buyClosure(qty))
         else:
-            return (self._inventory * self._price, self._inventory, buyClosure(self._inventory))
+            q = min(qty, self._inventory)
+            return (self._priceScale() * q * self._price, q, buyClosure(q))
 
     def operate(self, markets):
-        if self._inventory >= self._maxInventory:
-            return
+        if self._inventory < self._maxInventory:
+            for _ in range(round(self._scale)):
+                price, buyClosure = marketBuyMany(markets, self._inputs)
+                if price < self._capital:
+                    self._capital -= price
+                    buyClosure()
+                    self._inventory += self._output.qty
+                    self._price = PRICE_INERTIA * self._price + (1 - PRICE_INERTIA) * (self._priceScale() * self._price)
 
-        price, buyClosure = marketBuyMany(markets, self._inputs)
-        if price < self._capital:
-            self._capital -= price
-            buyClosure()
-            self._inventory += self._output.qty
-            self._price = price / self._output.qty
+        dScale = 1 - 2 * self._inventory / self._maxInventory
+        self._scale = SCALE_INERTIA * self._scale + (1 - SCALE_INERTIA) * max(1, self._scale + dScale)
 
     def reset(self):
         pass
 
     def report(self):
-        reportLine = f'{self._output.qty} {self._output.good} @ ${self._price:.2f} <- '
+        reportLine = f'{self._output.qty} {self._output.good} @ ${self._priceScale() * self._price:.2f} <- '
         for req in self._inputs:
             reportLine += f'{req.qty} {req.good}, '
         print(reportLine)
-        print(f'    ${self._capital:0.2f} | {self._inventory}')
+        print(f'    ${self._capital:0.2f} | {self._inventory} | scale {round(self._scale)}x')
 
 class LaborUnion:
     def __init__(self, population, inputs, capital, initialPrice):
@@ -137,6 +146,9 @@ class LaborUnion:
             q = min(qty, self._unemployment)
             return self._price, q, buyClosure(q)
 
+    def goodsProduced(self):
+        return set([Good('labor')])
+
     def reset(self):
         self._unemployment = self._population
 
@@ -153,7 +165,8 @@ class LaborUnion:
                 self._population -= 1
 
         if self._population > 0:
-            self._price = totalPrice / self._population
+            scale = max(1, totalPrice * 10 / self._capital)
+            self._price = PRICE_INERTIA * self._price + (1 - PRICE_INERTIA) * (scale * totalPrice / max(1, self._population - self._unemployment))
         else:
             self._price = float('inf')
 
@@ -163,8 +176,12 @@ class LaborUnion:
 
 PRODUCERS = [
     LaborUnion(10, [ QGood(Good('corn'), 1), QGood(Good('water'), 1) ], capital=1000, initialPrice=1),
-    Producer(QGood(Good('water'), 10), [ QGood(Good('labor'), 1) ], capital=1000, initialInventory=50, initialPrice=1),
-    Producer(QGood(Good('corn'), 10), [ QGood(Good('labor'), 1), QGood(Good('water'), 1) ], capital=1000, initialInventory=50),
+    Producer(QGood(Good('water'), 4), [ QGood(Good('labor'), 1) ], capital=1000, initialInventory=50, initialPrice=1),
+    Producer(QGood(Good('water'), 4), [ QGood(Good('labor'), 1) ], capital=1000, initialInventory=50, initialPrice=1),
+    Producer(QGood(Good('water'), 4), [ QGood(Good('labor'), 1) ], capital=1000, initialInventory=50, initialPrice=1),
+    Producer(QGood(Good('corn'), 4), [ QGood(Good('labor'), 1), QGood(Good('water'), 1) ], capital=1000, initialInventory=50, initialPrice=1),
+    Producer(QGood(Good('corn'), 4), [ QGood(Good('labor'), 1), QGood(Good('water'), 1) ], capital=1000, initialInventory=50, initialPrice=1),
+    Producer(QGood(Good('corn'), 4), [ QGood(Good('labor'), 1), QGood(Good('water'), 1) ], capital=1000, initialInventory=50, initialPrice=1),
     ]
 
 GOODS = [ Good(s) for s in [ 'labor', 'water', 'corn', 'wheat', 'apples', 'wood', 'ore', 'house', 'meat', 'spear' ] ]
