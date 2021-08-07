@@ -152,16 +152,16 @@ class LaborUnion:
         self._capital = capital
 
     def askPrice(self, good, qty):
-        def buyClosure(qty):
+        def buyClosure(price, qty):
             def r():
-                self._capital += qty * self._price
+                self._capital += qty * price
                 self._unemployment -= qty
             return r
         if good != Good('labor') or self._unemployment == 0:
             return float('inf'), 0, cantBuyNothing
         else:
             q = min(qty, self._unemployment)
-            return self._price, q, buyClosure(q)
+            return self._price, q, buyClosure(self._price, q)
 
     def goodsProduced(self):
         return set([Good('labor')])
@@ -182,7 +182,10 @@ class LaborUnion:
                 self._population -= 1
 
         if self._population > 0:
-            self._price = LABOR_PRICE_INERTIA * self._price + (1 - LABOR_PRICE_INERTIA) * (1 + LABOR_PROFIT) * totalPrice / self._population
+            costOfLiving = totalPrice / self._population
+            # If I'm not making at least 1% of my total wealth, it's not worth it
+            laborPrice = (1 + LABOR_PROFIT) * max(costOfLiving, 0.01 * self._capital / self._population)
+            self._price = LABOR_PRICE_INERTIA * self._price + (1 - LABOR_PRICE_INERTIA) * laborPrice
         else:
             self._price = float('inf')
 
