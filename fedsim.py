@@ -158,9 +158,13 @@ class LaborUnion:
         self._unemployment = population
         self._inputs = inputs
         self._price = initialPrice
-        self._costOfLiving = 0
+        self._costOfLiving = 1
         self._capital = capital
         self._params = params
+
+    def _working(self):
+        daysSavings = (self._capital / self._population) / self._costOfLiving
+        return self._population > 0 and daysSavings < self._params['max_days_savings']
 
     def askPrice(self, good, qty):
         def buyClosure(price, qty):
@@ -172,7 +176,11 @@ class LaborUnion:
             return float('inf'), 0, cantBuyNothing
         else:
             q = min(qty, self._unemployment)
-            return self._price, q, buyClosure(self._price, q)
+            if not self._working():
+                price = float('inf')
+            else:
+                price = self._price
+            return price, q, buyClosure(price, q)
 
     def goodsProduced(self):
         return set([Good('labor')])
@@ -192,19 +200,12 @@ class LaborUnion:
                 print(f'DEATH: can\'t afford ${price:.2f} with ${self._capital:.2f}')
                 self._population -= 1
 
-        if self._population > 0:
-            self._costOfLiving = totalPrice / self._population
-            daysSavings = (self._capital / self._population) / self._costOfLiving
-            if daysSavings > self._params['max_days_savings']:
-                self._price = float('inf')
-            else:
-                laborPrice = (1 + self._params['profit_margin']) * self._costOfLiving
-                self._price = self._params['price_inertia'] * self._price + (1 - self._params['price_inertia']) * laborPrice
-        else:
-            self._price = float('inf')
+        self._costOfLiving = totalPrice / self._population
+        laborPrice = (1 + self._params['profit_margin']) * self._costOfLiving
+        self._price = self._params['price_inertia'] * self._price + (1 - self._params['price_inertia']) * laborPrice
 
     def report(self):
-        print(f'Population: {self._population} ({self._population - self._unemployment} employed) | Savings: ${self._capital:.2f} | Price: ${self._price:.2f} | COL {self._costOfLiving:.2f}')
+        print(f'Population: {self._population} ({self._population - self._unemployment} employed) | Savings: ${self._capital:.2f} | Price: ${self._price:.2f} | COL {self._costOfLiving:.2f} {"(out of work)" if not self._working() else ""}')
         paramStr = ', '.join([f'{k}: {v:.2f}' for k,v in self._params.items()])
         if VERBOSE:
             print(f'    {paramStr}')
@@ -212,15 +213,7 @@ class LaborUnion:
 
 PRODUCERS = [
     LaborUnion(2, [ QGood(Good('corn'), 1), QGood(Good('water'), 1) ], capital=100, params=make_labor_params(), initialPrice=1),
-    LaborUnion(2, [ QGood(Good('corn'), 1), QGood(Good('water'), 1) ], capital=200, params=make_labor_params(), initialPrice=1),
-    LaborUnion(2, [ QGood(Good('corn'), 1), QGood(Good('water'), 1) ], capital=400, params=make_labor_params(), initialPrice=1),
-    LaborUnion(2, [ QGood(Good('corn'), 1), QGood(Good('water'), 1) ], capital=800, params=make_labor_params(), initialPrice=1),
-    LaborUnion(2, [ QGood(Good('corn'), 1), QGood(Good('water'), 1) ], capital=1600, params=make_labor_params(), initialPrice=1),
     Producer(QGood(Good('water'), 4), [ QGood(Good('labor'), 1) ], capital=1000, params=make_params(), initialPrice=1),
-    Producer(QGood(Good('water'), 4), [ QGood(Good('labor'), 1) ], capital=1000, params=make_params(), initialPrice=1),
-    Producer(QGood(Good('water'), 4), [ QGood(Good('labor'), 1) ], capital=1000, params=make_params(), initialPrice=1),
-    Producer(QGood(Good('corn'), 4), [ QGood(Good('labor'), 1), QGood(Good('water'), 1) ], capital=1000, params=make_params(), initialPrice=1),
-    Producer(QGood(Good('corn'), 4), [ QGood(Good('labor'), 1), QGood(Good('water'), 1) ], capital=1000, params=make_params(), initialPrice=1),
     Producer(QGood(Good('corn'), 4), [ QGood(Good('labor'), 1), QGood(Good('water'), 1) ], capital=1000, params=make_params(), initialPrice=1),
     ]
 
