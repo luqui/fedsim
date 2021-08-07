@@ -105,7 +105,10 @@ class Producer:
             self._capital -= price
             buyClosure()
             self._inventory += self._output.qty
-            self._price = price
+            self._price = price / self._output.qty
+
+    def reset(self):
+        pass
 
     def report(self):
         reportLine = f'{self._output.qty} {self._output.good} @ ${self._price:.2f} <- '
@@ -114,12 +117,55 @@ class Producer:
         print(reportLine)
         print(f'    ${self._capital:0.2f} | {self._inventory}')
 
+class LaborUnion:
+    def __init__(self, population, inputs, capital, initialPrice):
+        self._population = population
+        self._unemployment = population
+        self._inputs = inputs
+        self._price = initialPrice
+        self._capital = capital
+
+    def askPrice(self, good, qty):
+        def buyClosure(qty):
+            def r():
+                self._capital += qty * self._price
+                self._unemployment -= qty
+            return r
+        if good != Good('labor') or self._unemployment == 0:
+            return float('inf'), 0, cantBuyNothing
+        else:
+            q = min(qty, self._unemployment)
+            return self._price, q, buyClosure(q)
+
+    def reset(self):
+        self._unemployment = self._population
+
+    def operate(self, markets):
+        totalPrice = 0
+        for _ in range(self._population):
+            price, buyClosure = marketBuyMany(markets, self._inputs)
+            if self._capital >= price:
+                self._capital -= price
+                totalPrice += price
+                buyClosure()
+            else:
+                print(f'DEATH: can\'t afford ${price:.2f} with ${self._capital:.2f}')
+                self._population -= 1
+
+        if self._population > 0:
+            self._price = totalPrice / self._population
+        else:
+            self._price = float('inf')
+
+    def report(self):
+        print(f'Population: {self._population} ({self._population - self._unemployment} employed) | Savings: ${self._capital:.2f} | Price: ${self._price:.2f}')
+
 
 PRODUCERS = [
-    Producer(QGood(Good('water'), 10), [ QGood(Good('labor'), 1) ], 1000, initialInventory=100, initialPrice=1),
-    Producer(QGood(Good('labor'), 1), [ QGood(Good('corn'), 1), QGood(Good('water'), 1) ], 1000, initialInventory=100, initialPrice=1),
-    Producer(QGood(Good('corn'), 10), [ QGood(Good('labor'), 1), QGood(Good('water'), 1) ], 1000),
-]
+    LaborUnion(10, [ QGood(Good('corn'), 1), QGood(Good('water'), 1) ], capital=1000, initialPrice=1),
+    Producer(QGood(Good('water'), 10), [ QGood(Good('labor'), 1) ], capital=1000, initialInventory=50, initialPrice=1),
+    Producer(QGood(Good('corn'), 10), [ QGood(Good('labor'), 1), QGood(Good('water'), 1) ], capital=1000, initialInventory=50),
+    ]
 
 GOODS = [ Good(s) for s in [ 'labor', 'water', 'corn', 'wheat', 'apples', 'wood', 'ore', 'house', 'meat', 'spear' ] ]
 
@@ -149,13 +195,6 @@ signal.signal(signal.SIGINT, add_producer)
 
 STEP = 0
 while True:
-    for p in sorted(PRODUCERS, key=lambda _: random.uniform(0,1)):
-        p.operate(PRODUCERS)
-
-    if ADD_PRODUCER:
-        ADD_PRODUCER = False
-        PRODUCERS.append(make_producer())
-
     if STEP % 1 == 0:
         print()
         print(f'------ STEP {STEP} ------')
@@ -167,5 +206,15 @@ while True:
         TRADEQTY = 0
         
         time.sleep(0.4)
+
+    for p in PRODUCERS:
+        p.reset()
+
+    for p in sorted(PRODUCERS, key=lambda _: random.uniform(0,1)):
+        p.operate(PRODUCERS)
+
+    if ADD_PRODUCER:
+        ADD_PRODUCER = False
+        PRODUCERS.append(make_producer())
 
     STEP += 1
