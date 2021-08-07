@@ -8,7 +8,7 @@ import sys
 import time
 
 Good = namedtuple('Good', ['name'])
-Input = namedtuple('Input', ['good', 'qty'])
+QGood = namedtuple('QGood', ['good', 'qty'])
 
 Ask = recordclass('Ask', ['price', 'qty', 'asker'])
 Bid = recordclass('Ask', ['price', 'qty', 'bidder'])
@@ -123,9 +123,9 @@ def getMarket(good):
     return m
 
 PRODUCERS = [
-    Producer(Good('water'), 10, [ Input(Good('labor'), 1) ], 1),
-    Producer(Good('labor'), 1, [ Input(Good('corn'), 1), Input(Good('water'), 1) ], 1),
-    Producer(Good('corn'), 10, [ Input(Good('labor'), 1), Input(Good('water'), 1) ], 1),
+    Producer(Good('water'), 10, [ QGood(Good('labor'), 1) ], 1),
+    Producer(Good('labor'), 1, [ QGood(Good('corn'), 1), QGood(Good('water'), 1) ], 1),
+    Producer(Good('corn'), 10, [ QGood(Good('labor'), 1), QGood(Good('water'), 1) ], 1),
 ]
 
 getMarket(Good('labor')).ask(100)
@@ -135,7 +135,7 @@ GOODS = [ Good(s) for s in [ 'labor', 'water', 'corn', 'wheat', 'apples', 'wood'
 
 def make_producer():
     inputGoods = []
-    inputGoods.append(Input(Good('labor'), random.randrange(1,4)))
+    inputGoods.append(QGood(Good('labor'), random.randrange(1,4)))
 
     goodsProduced = [ g for g in GOODS if g in MARKETS ]
 
@@ -143,7 +143,7 @@ def make_producer():
         good = random.choice(goodsProduced)
         if any(g.good == good for g in inputGoods):
             continue
-        inputGoods.append(Input(good, random.randrange(1,4)))
+        inputGoods.append(QGood(good, random.randrange(1,4)))
 
     multiplier = random.randrange(1,10)
     return Producer(random.choice(GOODS), multiplier, inputGoods, random.randrange(1,100))
