@@ -66,10 +66,12 @@ def make_params():
     return {
         'price_inertia': random.uniform(0,1),
         'scale_inertia': random.uniform(0,1),
-        'price_inventory_base': random.uniform(1, 3),
+        'price_inventory_exp': random.uniform(0, 2),
         'profit_margin': random.uniform(0,0.2),
     }
 
+
+VERBOSE = False
 
 class Producer:
     def __init__(self, output, inputs, capital, params, initialPrice = 1):
@@ -89,7 +91,7 @@ class Producer:
             return set()
 
     def _priceScale(self):
-        return math.pow(self._params['price_inventory_base'], 1 - 2 * self._inventory / self._maxInventory)
+        return math.pow(2 * self._maxInventory / max(1, self._inventory), self._params['price_inventory_exp'])
 
     def askPrice(self, good, qty):
         def buyClosure(price, qty):
@@ -107,7 +109,7 @@ class Producer:
             return (float('inf'), 0, cantBuyNothing)
         else:
             q = min(qty, self._inventory)
-            price = (1 + self._params['profit_margin']) * self._priceScale() * q * self._price
+            price = self._priceScale() * q * self._price
             return (price, q, buyClosure(price, q))
 
     def operate(self, markets):
@@ -123,8 +125,9 @@ class Producer:
                     totalPrice += price
                     rounds += 1
             if rounds > 0:
-                averagePrice = totalPrice / rounds
-                self._price = self._params['price_inertia'] * self._price + (1 - self._params['price_inertia']) * (averagePrice / self._output.qty)
+                averageCost = totalPrice / rounds
+                newPrice = (averageCost / self._output.qty) * (1 + self._params['profit_margin'])
+                self._price = self._params['price_inertia'] * self._price + (1 - self._params['price_inertia']) * newPrice
 
         dScale = 1 - 2 * self._inventory / self._maxInventory
         self._scale = self._params['scale_inertia'] * self._scale + (1 - self._params['scale_inertia']) * max(1, self._scale + dScale)
@@ -138,18 +141,26 @@ class Producer:
             reportLine += f'{req.qty} {req.good}, '
         print(reportLine)
         print(f'    ${self._capital:.2f} | {self._inventory} | scale {round(self._scale)}x')
-        paramStr = ', '.join([f'{k}: {v:.2f}' for k,v in self._params.items()])
-        print(f'    {paramStr}')
+        if VERBOSE:
+            paramStr = ', '.join([f'{k}: {v:.2f}' for k,v in self._params.items()])
+            print(f'    {paramStr}')
 
-LABOR_PROFIT = 0.20
-LABOR_PRICE_INERTIA = 0.9
+def make_labor_params():
+    return {
+        'max_days_savings': random.randrange(1,365) if random.uniform(0,1) < 0.9 else float('inf'),
+        'profit_margin': random.uniform(0, 0.2),
+        'price_inertia': random.uniform(0, 1),
+    }
+
 class LaborUnion:
-    def __init__(self, population, inputs, capital, initialPrice):
+    def __init__(self, population, inputs, capital, params, initialPrice):
         self._population = population
         self._unemployment = population
         self._inputs = inputs
         self._price = initialPrice
+        self._costOfLiving = 0
         self._capital = capital
+        self._params = params
 
     def askPrice(self, good, qty):
         def buyClosure(price, qty):
@@ -182,19 +193,29 @@ class LaborUnion:
                 self._population -= 1
 
         if self._population > 0:
-            costOfLiving = totalPrice / self._population
-            # If I'm not making at least 1% of my total wealth, it's not worth it
-            laborPrice = (1 + LABOR_PROFIT) * max(costOfLiving, 0.01 * self._capital / self._population)
-            self._price = LABOR_PRICE_INERTIA * self._price + (1 - LABOR_PRICE_INERTIA) * laborPrice
+            self._costOfLiving = totalPrice / self._population
+            daysSavings = (self._capital / self._population) / self._costOfLiving
+            if daysSavings > self._params['max_days_savings']:
+                self._price = float('inf')
+            else:
+                laborPrice = (1 + self._params['profit_margin']) * self._costOfLiving
+                self._price = self._params['price_inertia'] * self._price + (1 - self._params['price_inertia']) * laborPrice
         else:
             self._price = float('inf')
 
     def report(self):
-        print(f'Population: {self._population} ({self._population - self._unemployment} employed) | Savings: ${self._capital:.2f} | Price: ${self._price:.2f}')
+        print(f'Population: {self._population} ({self._population - self._unemployment} employed) | Savings: ${self._capital:.2f} | Price: ${self._price:.2f} | COL {self._costOfLiving:.2f}')
+        paramStr = ', '.join([f'{k}: {v:.2f}' for k,v in self._params.items()])
+        if VERBOSE:
+            print(f'    {paramStr}')
 
 
 PRODUCERS = [
-    LaborUnion(10, [ QGood(Good('corn'), 1), QGood(Good('water'), 1) ], capital=10000, initialPrice=1),
+    LaborUnion(2, [ QGood(Good('corn'), 1), QGood(Good('water'), 1) ], capital=100, params=make_labor_params(), initialPrice=1),
+    LaborUnion(2, [ QGood(Good('corn'), 1), QGood(Good('water'), 1) ], capital=200, params=make_labor_params(), initialPrice=1),
+    LaborUnion(2, [ QGood(Good('corn'), 1), QGood(Good('water'), 1) ], capital=400, params=make_labor_params(), initialPrice=1),
+    LaborUnion(2, [ QGood(Good('corn'), 1), QGood(Good('water'), 1) ], capital=800, params=make_labor_params(), initialPrice=1),
+    LaborUnion(2, [ QGood(Good('corn'), 1), QGood(Good('water'), 1) ], capital=1600, params=make_labor_params(), initialPrice=1),
     Producer(QGood(Good('water'), 4), [ QGood(Good('labor'), 1) ], capital=1000, params=make_params(), initialPrice=1),
     Producer(QGood(Good('water'), 4), [ QGood(Good('labor'), 1) ], capital=1000, params=make_params(), initialPrice=1),
     Producer(QGood(Good('water'), 4), [ QGood(Good('labor'), 1) ], capital=1000, params=make_params(), initialPrice=1),
@@ -232,6 +253,7 @@ signal.signal(signal.SIGINT, add_producer)
 STEP = 0
 while True:
     if STEP % 1 == 0:
+        VERBOSE = input() == 'v'
         print()
         print(f'------ STEP {STEP} ------')
         for p in PRODUCERS:
@@ -241,7 +263,6 @@ while True:
         TRADE = 0
         TRADEQTY = 0
         
-        input()
         #time.sleep(0.4)
 
     for p in PRODUCERS:
