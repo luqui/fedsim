@@ -163,7 +163,10 @@ class LaborUnion:
         self._params = params
 
     def _working(self):
-        daysSavings = (self._capital / self._population) / self._costOfLiving
+        if self._population == 0:
+            daysSavings = 0
+        else:
+            daysSavings = (self._capital / self._population) / self._costOfLiving
         return self._population > 0 and daysSavings < self._params['max_days_savings']
 
     def askPrice(self, good, qty):
@@ -200,20 +203,28 @@ class LaborUnion:
                 print(f'DEATH: can\'t afford ${price:.2f} with ${self._capital:.2f}')
                 self._population -= 1
 
-        self._costOfLiving = totalPrice / self._population
+        self._costOfLiving = totalPrice / max(1, self._population)
         laborPrice = (1 + self._params['profit_margin']) * self._costOfLiving
         self._price = self._params['price_inertia'] * self._price + (1 - self._params['price_inertia']) * laborPrice
 
     def report(self):
-        print(f'Population: {self._population} ({self._population - self._unemployment} employed) | Savings: ${self._capital:.2f} | Price: ${self._price:.2f} | COL {self._costOfLiving:.2f} {"(out of work)" if not self._working() else ""}')
+        print(f'Population: {self._population} ({self._population - self._unemployment} employed) | Savings: ${self._capital:.2f} | Price: ${self._price:.2f} | COL {self._costOfLiving:.2f} {"(voluntarily out of work)" if not self._working() else ""}')
         paramStr = ', '.join([f'{k}: {v:.2f}' for k,v in self._params.items()])
         if VERBOSE:
             print(f'    {paramStr}')
 
 
 PRODUCERS = [
+    LaborUnion(2, [ QGood(Good('corn'), 1), QGood(Good('water'), 1) ], capital=50, params=make_labor_params(), initialPrice=1),
     LaborUnion(2, [ QGood(Good('corn'), 1), QGood(Good('water'), 1) ], capital=100, params=make_labor_params(), initialPrice=1),
+    LaborUnion(2, [ QGood(Good('corn'), 1), QGood(Good('water'), 1) ], capital=200, params=make_labor_params(), initialPrice=1),
+    LaborUnion(2, [ QGood(Good('corn'), 1), QGood(Good('water'), 1) ], capital=400, params=make_labor_params(), initialPrice=1),
+    LaborUnion(2, [ QGood(Good('corn'), 1), QGood(Good('water'), 1) ], capital=800, params=make_labor_params(), initialPrice=1),
     Producer(QGood(Good('water'), 4), [ QGood(Good('labor'), 1) ], capital=1000, params=make_params(), initialPrice=1),
+    Producer(QGood(Good('water'), 4), [ QGood(Good('labor'), 1) ], capital=1000, params=make_params(), initialPrice=1),
+    Producer(QGood(Good('water'), 4), [ QGood(Good('labor'), 1) ], capital=1000, params=make_params(), initialPrice=1),
+    Producer(QGood(Good('corn'), 4), [ QGood(Good('labor'), 1), QGood(Good('water'), 1) ], capital=1000, params=make_params(), initialPrice=1),
+    Producer(QGood(Good('corn'), 4), [ QGood(Good('labor'), 1), QGood(Good('water'), 1) ], capital=1000, params=make_params(), initialPrice=1),
     Producer(QGood(Good('corn'), 4), [ QGood(Good('labor'), 1), QGood(Good('water'), 1) ], capital=1000, params=make_params(), initialPrice=1),
     ]
 
@@ -232,21 +243,17 @@ def make_producer():
         inputGoods.append(QGood(good, random.randrange(1,4)))
 
     multiplier = random.randrange(1,10)
-    return Producer(QGood(random.choice(GOODS), multiplier), inputGoods, 1000)
-
-ADD_PRODUCER = False
-
-def add_producer(sig, frame):
-    global ADD_PRODUCER
-    if ADD_PRODUCER:
-        sys.exit(0)
-    ADD_PRODUCER = True
-signal.signal(signal.SIGINT, add_producer)
+    return Producer(QGood(random.choice(GOODS), multiplier), inputGoods, random.uniform(100,2000), make_params())
 
 STEP = 0
 while True:
     if STEP % 1 == 0:
-        VERBOSE = input() == 'v'
+        cmd = input()
+        if cmd == 'v':
+            VERBOSE = not VERBOSE
+        if cmd == 'n':
+            PRODUCERS.append(make_producer())
+
         print()
         print(f'------ STEP {STEP} ------')
         for p in PRODUCERS:
@@ -263,9 +270,5 @@ while True:
 
     for p in sorted(PRODUCERS, key=lambda _: random.uniform(0,1)):
         p.operate(PRODUCERS)
-
-    if ADD_PRODUCER:
-        ADD_PRODUCER = False
-        PRODUCERS.append(make_producer())
 
     STEP += 1
