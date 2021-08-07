@@ -91,7 +91,7 @@ class Producer:
             return set()
 
     def _priceScale(self):
-        return math.pow(2 * self._maxInventory / max(1, self._inventory), self._params['price_inventory_exp'])
+        return math.pow(0.5 * self._maxInventory / max(1, self._inventory), self._params['price_inventory_exp'])
 
     def askPrice(self, good, qty):
         def buyClosure(price, qty):
